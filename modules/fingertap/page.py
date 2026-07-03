@@ -12,14 +12,12 @@ def get_ice_servers():
     account_sid = None
     auth_token = None
 
-    # 1. First, safely check OS environment variables (Hugging Face standard)
+    # 1. Safely check OS environment variables (Hugging Face standard)
     account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
     auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
 
-    # 2. If OS env vars aren't set, carefully check for a Streamlit secrets file
+    # 2. If OS env vars aren't set, check for a local Streamlit secrets file
     if not account_sid or not auth_token:
-        # Prevent Streamlit's internal FileNotFoundError by manually verifying the file exists on disk.
-        # This completely bypasses the red error box shown in the screenshot.
         local_secrets = os.path.join(os.getcwd(), ".streamlit", "secrets.toml")
         global_secrets = os.path.join(
             os.path.expanduser("~"), ".streamlit", "secrets.toml"
@@ -32,7 +30,7 @@ def get_ice_servers():
             except Exception:
                 pass
 
-    # 3. If we successfully found credentials, fetch Twilio ICE servers
+    # 3. If credentials are found, fetch Twilio ICE servers
     if account_sid and auth_token:
         try:
             from twilio.rest import Client
@@ -43,7 +41,7 @@ def get_ice_servers():
         except Exception as e:
             print(f"Failed to fetch Twilio ICE servers: {e}")
 
-    # 4. Bulletproof fallback to highly reliable public STUN/TURN servers
+    # 4. Fallback to reliable public STUN/TURN servers
     return [
         {"urls": ["stun:stun.l.google.com:19302"]},
         {"urls": ["stun:stun1.l.google.com:19302"]},
@@ -101,7 +99,7 @@ Clinical prediction using finger tapping data has not yet been implemented.
     # WebRTC Streamer Block
     if st.session_state.webrtc_playing:
         ctx = webrtc_streamer(
-            key="fingertap",
+            key="fingertap_streamer",
             mode=WebRtcMode.SENDRECV,
             desired_playing_state=True,
             video_processor_factory=FingerTapProcessor,
@@ -109,45 +107,40 @@ Clinical prediction using finger tapping data has not yet been implemented.
             rtc_configuration={"iceServers": get_ice_servers()},
         )
 
-        # Main Thread Synchronization: The Correct Architecture
+        # Main Thread Synchronization: Stabilized Thread-Pinning
+        # This execution block triggers ONLY when the connection is established and active
         if ctx.state.playing and ctx.video_processor:
-            with st.spinner("Recording in progress... Please tap your fingers."):
+            status_placeholder = st.empty()
+            status_placeholder.markdown(
+                "### 🎥 Recording Active... Please tap your fingers."
+            )
 
-                # Failsafe timeout to prevent permanent hanging if the camera fails to send frames
-                timeout = 35
-                start_wait = time.time()
+            # Pinned Polling Loop: Safely sleep without calling st.rerun() continuously.
+            # This protects the WebSocket connection from dropping and breaking session state.
+            while ctx.state.playing and not ctx.video_processor.finished:
+                time.sleep(0.2)
 
-                # We block the main Streamlit thread using a while loop.
-                # This is the correct architecture because WebRTC frame processing
-                # happens in an isolated background asyncio thread.
-                # This prevents UI re-renders from killing the WebRTC socket.
-                while not ctx.video_processor.finished:
-                    if time.time() - start_wait > timeout:
-                        st.error(
-                            "Camera feed timed out. Please check your permissions or network connection."
-                        )
-                        st.stop()
-                    time.sleep(0.5)
-
-                # Once the background thread flags finished=True, extract data safely
+            # Once the 20 seconds finish or the stream stops, extract the data securely
+            if ctx.video_processor and ctx.video_processor.finished:
                 st.session_state.final_times = ctx.video_processor.times
                 st.session_state.final_distances = ctx.video_processor.distances
 
-                # Update states to trigger the finish screen and shut down camera
+                # Update states to close the camera and switch to the results layout
                 st.session_state.webrtc_playing = False
                 st.session_state.capture_done = True
 
                 st.session_state.fingertap_completed = True
                 st.session_state.results["fingertap"] = {"status": "Completed"}
 
-                # We trigger EXACTLY ONE rerun here to turn off the camera and render the plot.
+                # Clear the status indicator and trigger exactly ONE clean rerun to load results
+                status_placeholder.empty()
                 st.rerun()
 
     # Results Block
     if st.session_state.capture_done:
         st.success("Assessment Complete")
 
-        # Render graph directly inside Streamlit
+        # Render graph natively inside Streamlit
         fig = generate_graph(
             st.session_state.final_times, st.session_state.final_distances
         )
