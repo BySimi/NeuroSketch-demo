@@ -6,50 +6,24 @@ from modules.fingertap.detector import FingerTapProcessor, generate_graph
 
 
 def get_ice_servers():
-    """
-    Returns ICE server configuration safely for Hugging Face Spaces and Streamlit Cloud.
-    """
     account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
     auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
 
     if not account_sid or not auth_token:
-        local_secrets = os.path.join(os.getcwd(), ".streamlit", "secrets.toml")
-        global_secrets = os.path.join(
-            os.path.expanduser("~"), ".streamlit", "secrets.toml"
-        )
+        secrets_paths = [
+            "/app/.streamlit/secrets.toml",
+            "/root/.streamlit/secrets.toml",
+            os.path.join(os.getcwd(), ".streamlit", "secrets.toml"),
+            os.path.join(os.path.expanduser("~"), ".streamlit", "secrets.toml"),
+        ]
 
-        if os.path.exists(local_secrets) or os.path.exists(global_secrets):
+        if any(os.path.exists(p) for p in secrets_paths):
             try:
                 account_sid = st.secrets.get("TWILIO_ACCOUNT_SID")
                 auth_token = st.secrets.get("TWILIO_AUTH_TOKEN")
             except Exception:
                 pass
-
-    if account_sid and auth_token:
-        try:
-            from twilio.rest import Client
-
-            client = Client(account_sid, auth_token)
-            token = client.tokens.create()
-            return token.ice_servers
-        except Exception as e:
-            print(f"Failed to fetch Twilio ICE servers: {e}")
-
-    return [
-        {"urls": ["stun:stun.l.google.com:19302"]},
-        {"urls": ["stun:stun1.l.google.com:19302"]},
-        {"urls": ["stun:stun.relay.metered.ca:80"]},
-        {
-            "urls": ["turn:global.relay.metered.ca:80"],
-            "username": "openrelayproject",
-            "credential": "openrelayproject",
-        },
-        {
-            "urls": ["turn:global.relay.metered.ca:443"],
-            "username": "openrelayproject",
-            "credential": "openrelayproject",
-        },
-    ]
+    ...
 
 
 def show():
