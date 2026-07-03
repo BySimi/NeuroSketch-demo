@@ -5,43 +5,41 @@ from modules.fingertap.detector import FingerTapProcessor, generate_graph
 
 def get_ice_servers():
     """
-    Returns ICE server config with STUN + TURN.
+    Returns ICE server configuration.
 
-    STUN alone (stun.l.google.com) frequently fails on Streamlit
-    Community Cloud because outbound direct P2P connections are
-    blocked there. TURN provides a relay fallback so the connection
-    can still be established.
+    If Twilio credentials are available, use them.
+    Otherwise, fall back to public STUN/TURN servers.
     """
-    # Preferred: Twilio's free Network Traversal Service, if you've
-    # added TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN to st.secrets.
-    if "TWILIO_ACCOUNT_SID" in st.secrets and "TWILIO_AUTH_TOKEN" in st.secrets:
-        try:
+
+    try:
+        account_sid = st.secrets.get("TWILIO_ACCOUNT_SID")
+        auth_token = st.secrets.get("TWILIO_AUTH_TOKEN")
+
+        if account_sid and auth_token:
             from twilio.rest import Client
 
-            client = Client(
-                st.secrets["TWILIO_ACCOUNT_SID"], st.secrets["TWILIO_AUTH_TOKEN"]
-            )
+            client = Client(account_sid, auth_token)
             token = client.tokens.create()
             return token.ice_servers
-        except Exception:
-            pass  # fall back to the public TURN servers below
 
-    # Fallback: Open Relay Project's free public STUN/TURN servers.
-    # No signup needed — good enough for prototypes/demos.
+    except Exception:
+        pass
+
+    # Public STUN/TURN fallback
     return [
-        {"urls": "stun:stun.relay.metered.ca:80"},
+        {"urls": ["stun:stun.relay.metered.ca:80"]},
         {
-            "urls": "turn:global.relay.metered.ca:80",
+            "urls": ["turn:global.relay.metered.ca:80"],
             "username": "openrelayproject",
             "credential": "openrelayproject",
         },
         {
-            "urls": "turn:global.relay.metered.ca:443",
+            "urls": ["turn:global.relay.metered.ca:443"],
             "username": "openrelayproject",
             "credential": "openrelayproject",
         },
         {
-            "urls": "turn:global.relay.metered.ca:443?transport=tcp",
+            "urls": ["turn:global.relay.metered.ca:443?transport=tcp"],
             "username": "openrelayproject",
             "credential": "openrelayproject",
         },
