@@ -7,27 +7,32 @@ from modules.fingertap.detector import FingerTapProcessor, generate_graph
 
 def get_ice_servers():
     """
-    Returns ICE server configuration safely for both Hugging Face and Streamlit Cloud.
+    Returns ICE server configuration safely for Hugging Face Spaces and Streamlit Cloud.
     """
     account_sid = None
     auth_token = None
 
-    # 1. Safely check OS environment (Hugging Face standard)
+    # 1. First, safely check OS environment variables (Hugging Face standard)
     account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
     auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
 
-    # 2. Safely check Streamlit secrets (Streamlit Cloud standard)
+    # 2. If OS env vars aren't set, carefully check for a Streamlit secrets file
     if not account_sid or not auth_token:
-        try:
-            # hasattr prevents FileNotFoundError if the .toml file is completely missing
-            if hasattr(st, "secrets") and "TWILIO_ACCOUNT_SID" in st.secrets:
-                account_sid = st.secrets["TWILIO_ACCOUNT_SID"]
-                auth_token = st.secrets["TWILIO_AUTH_TOKEN"]
-        except Exception:
-            # Catch FileNotFoundError, KeyError, etc. gracefully
-            pass
+        # Prevent Streamlit's internal FileNotFoundError by manually verifying the file exists on disk.
+        # This completely bypasses the red error box shown in the screenshot.
+        local_secrets = os.path.join(os.getcwd(), ".streamlit", "secrets.toml")
+        global_secrets = os.path.join(
+            os.path.expanduser("~"), ".streamlit", "secrets.toml"
+        )
 
-    # 3. If we found credentials, fetch Twilio ICE servers
+        if os.path.exists(local_secrets) or os.path.exists(global_secrets):
+            try:
+                account_sid = st.secrets.get("TWILIO_ACCOUNT_SID")
+                auth_token = st.secrets.get("TWILIO_AUTH_TOKEN")
+            except Exception:
+                pass
+
+    # 3. If we successfully found credentials, fetch Twilio ICE servers
     if account_sid and auth_token:
         try:
             from twilio.rest import Client
@@ -38,7 +43,7 @@ def get_ice_servers():
         except Exception as e:
             print(f"Failed to fetch Twilio ICE servers: {e}")
 
-    # 4. Fallback to highly reliable public STUN/TURN servers
+    # 4. Bulletproof fallback to highly reliable public STUN/TURN servers
     return [
         {"urls": ["stun:stun.l.google.com:19302"]},
         {"urls": ["stun:stun1.l.google.com:19302"]},
