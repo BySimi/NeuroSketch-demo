@@ -47,9 +47,7 @@ class FingerTapProcessor:
 
     IMPORTANT: mediapipe's Hands() is NOT thread-safe. Each processor
     instance (i.e. each WebRTC track/session) must own its own Hands
-    object rather than sharing one cached instance across sessions —
-    concurrent calls into a shared instance can silently hang instead
-    of raising, which freezes the video with no error shown.
+    object rather than sharing one cached instance across sessions.
     """
 
     def __init__(self):
@@ -65,7 +63,7 @@ class FingerTapProcessor:
         self.last_index = None
         self.last_distance = -1
 
-        # Per-instance MediaPipe Hands object — NOT shared/cached globally.
+        # Per-instance MediaPipe Hands object
         self.hands = mp.solutions.hands.Hands(
             static_image_mode=False,
             max_num_hands=2,
@@ -79,7 +77,7 @@ class FingerTapProcessor:
             img = frame.to_ndarray(format="bgr24")
             self.frame_count += 1
 
-            # Initialize start time on the very first frame
+            # Initialize start time ONLY when the first frame actually arrives
             if self.start_time is None:
                 self.start_time = time.time()
 
@@ -106,11 +104,11 @@ class FingerTapProcessor:
                     if self.last_thumb:
                         cv2.circle(img, self.last_thumb, 10, (0, 255, 0), cv2.FILLED)
 
-                # Display information on the frame exactly as before
+                # Display information on the frame
                 remaining_time = max(0, int(self.capture_duration - current_time))
                 cv2.putText(
                     img,
-                    f"Distance: {self.last_distance:.2f} pixels",
+                    f"Distance: {self.last_distance:.2f} px",
                     (50, 50),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     1,
@@ -144,9 +142,6 @@ class FingerTapProcessor:
             return av.VideoFrame.from_ndarray(img, format="bgr24")
 
         except Exception:
-            # Never let recv() throw silently — that's what causes the
-            # video to hang with no visible error. Log it and pass the
-            # original frame through so the stream stays alive.
             traceback.print_exc()
             return frame
 
